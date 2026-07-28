@@ -1,0 +1,93 @@
+name: Update GoPray prayer times from Telegram
+
+on:
+  schedule:
+    # Runs every 6 hours. Adjust as you like — cron is in UTC.
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}   # lets you also trigger it manually from the Actions tab
+
+jobs:
+  update-times:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch and parse @andijon_namoz, update Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, re, json, urllib.request, datetime
+
+          SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
+          SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+
+          # ---- 1. Fetch the channel's public preview page ----
+          req = urllib.request.Request(
+              "https://t.me/s/andijon_namoz",
+              headers={"User-Agent": "Mozilla/5.0"}
+          )
+          with urllib.request.urlopen(req, timeout=20) as resp:
+              html = resp.read().decode("utf-8", errors="ignore")
+
+          # ---- 2. Split into individual message blocks, keep only ones ----
+          #         that actually contain a "BOMDOD" time line (skip other posts)
+          blocks = re.split(r'(?=<div class="tgme_widget_message[ "])', html)
+          candidates = [b for b in blocks if re.search(r'BOMDOD', b, re.IGNORECASE)]
+          if not candidates:
+              print("No BOMDOD post found — channel format may have changed. Skipping.")
+              raise SystemExit(0)
+
+          # the LAST matching block in document order is the most recent post
+          post = candidates[-1]
+          text = re.sub('<[^<]+?>', ' ', post)  # strip HTML tags to plain text
+          text = re.sub(r'\s+', ' ', text)
+
+          def find_pair(label):
+              # matches e.g. "BOMDOD 03:20 ( 04:10 )" or "BOMDOD 03:20(04:10)"
+              m = re.search(label + r'\s*(\d{1,2}:\d{2})\s*\(?\s*(\d{1,2}:\d{2})?\s*\)?', text, re.IGNORECASE)
+              return m
+
+          bomdod = find_pair("BOMDOD")
+          asr    = find_pair("ASR")
+          shom   = find_pair("SHOM")
+          xufton = find_pair("XUFTON")
+
+          if not (bomdod and asr and shom and xufton):
+              print("Could not parse all required prayer times from the latest post. Skipping update.")
+              print("---- extracted text for debugging ----")
+              print(text[:800])
+              raise SystemExit(0)
+
+          bomdod_azon, bomdod_takbir = bomdod.group(1), bomdod.group(2) or bomdod.group(1)
+          asr_azon, asr_takbir       = asr.group(1), asr.group(2) or asr.group(1)
+          shom_time                  = shom.group(1)
+          xufton_azon, xufton_takbir = xufton.group(1), xufton.group(2) or xufton.group(1)
+
+          today = datetime.date.today().isoformat()
+
+          payload = {
+              "effective_date": today,
+              "bomdod_azon": bomdod_azon, "bomdod_takbir": bomdod_takbir,
+              "peshin_azon": "12:45", "peshin_takbir": "13:00",  # fixed year-round, per Avazbek
+              "asr_azon": asr_azon, "asr_takbir": asr_takbir,
+              "shom": shom_time,
+              "xufton_azon": xufton_azon, "xufton_takbir": xufton_takbir,
+              "source_post_date": today,
+          }
+          print("Parsed payload:", json.dumps(payload, indent=2))
+
+          # ---- 3. Upsert into Supabase (one row per effective_date) ----
+          req2 = urllib.request.Request(
+              f"{SUPABASE_URL}/rest/v1/prayer_times?on_conflict=effective_date",
+              data=json.dumps(payload).encode(),
+              method="POST",
+              headers={
+                  "apikey": SERVICE_KEY,
+                  "Authorization": f"Bearer {SERVICE_KEY}",
+                  "Content-Type": "application/json",
+                  "Prefer": "resolution=merge-duplicates",
+              },
+          )
+          with urllib.request.urlopen(req2, timeout=20) as resp2:
+              print("Supabase response:", resp2.status)
+          PYEOF
