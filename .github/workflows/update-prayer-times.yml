@@ -99,3 +99,4 @@ jobs:
           with urllib.request.urlopen(req2, timeout=20) as resp2:
               print("Supabase response:", resp2.status)
           PYEOF
+
