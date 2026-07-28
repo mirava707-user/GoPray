@@ -39,8 +39,16 @@ jobs:
 
           # the LAST matching block in document order is the most recent post
           post = candidates[-1]
-          text = re.sub('<[^<]+?>', ' ', post)  # strip HTML tags to plain text
-          text = re.sub(r'\s+', ' ', text)
+
+          # Prefer the precise message-text element if we can isolate it (avoids
+          # footer/timestamp/reply-quote noise); fall back to the whole block otherwise.
+          text_match = re.search(r'class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', post, re.DOTALL)
+          raw = text_match.group(1) if text_match else post
+
+          text = re.sub(r'<br\s*/?>', '\n', raw)          # keep line breaks meaningful
+          text = re.sub('<[^<]+?>', ' ', text)              # strip remaining HTML tags
+          text = re.sub(r'[ \t]+', ' ', text)
+          text = re.sub(r'\n\s*', ' | ', text)              # make line breaks visible as separators
 
           def find_pair(label):
               # Real format confirmed from a live run's log: "03:35 - BOMDOD (04:25)"
@@ -61,7 +69,10 @@ jobs:
               print("Could not parse all required prayer times from the latest post. Skipping update.")
               print("BOMDOD matched:", bool(bomdod), "| ASR matched:", bool(asr), "| SHOM matched:", bool(shom), "| XUFTON matched:", bool(xufton))
               print("---- extracted text for debugging ----")
-              print(text[:2000])
+              print(f"TOTAL EXTRACTED TEXT LENGTH: {len(text)} characters")
+              print("---- full text, in 300-char numbered chunks ----")
+              for i in range(0, len(text), 300):
+                  print(f"[chunk {i}] {text[i:i+300]}")
               raise SystemExit(1)
 
           bomdod_azon, bomdod_takbir = bomdod.group(1), bomdod.group(2) or bomdod.group(1)
@@ -99,4 +110,3 @@ jobs:
           with urllib.request.urlopen(req2, timeout=20) as resp2:
               print("Supabase response:", resp2.status)
           PYEOF
-
