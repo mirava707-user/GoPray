@@ -44,18 +44,37 @@ jobs:
           # confirmed from a real run where Shom/Xufton were cut off. So instead
           # of parsing the truncated preview, find this specific message's own
           # permalink and fetch ITS dedicated page, which shows the full text.
-          post_id_match = re.search(r'data-post="(andijon_namoz/\d+)"', post)
+          post_id_match = re.search(r'data-post="andijon_namoz/(\d+)"', post)
           if post_id_match:
-              try:
-                  req_single = urllib.request.Request(
-                      f"https://t.me/{post_id_match.group(1)}?embed=1",
-                      headers={"User-Agent": "Mozilla/5.0"}
-                  )
-                  with urllib.request.urlopen(req_single, timeout=20) as resp_single:
-                      post = resp_single.read().decode("utf-8", errors="ignore")
-                  print(f"Fetched full single-post page for {post_id_match.group(1)}")
-              except Exception as e:
-                  print(f"Could not fetch single-post page, falling back to feed preview: {e}")
+              base_id = int(post_id_match.group(1))
+              # The matched block may be a "channel pinned a message" service
+              # notification rather than the real content post (confirmed from
+              # a real run: id N was labeled "Service message"). The actual post
+              # is almost always the message right before the pin action, so
+              # walk backward a few IDs until we find a real post with BOMDOD in it.
+              found = False
+              for candidate_id in [base_id, base_id-1, base_id-2, base_id-3]:
+                  try:
+                      req_single = urllib.request.Request(
+                          f"https://t.me/andijon_namoz/{candidate_id}?embed=1",
+                          headers={"User-Agent": "Mozilla/5.0"}
+                      )
+                      with urllib.request.urlopen(req_single, timeout=20) as resp_single:
+                          candidate_page = resp_single.read().decode("utf-8", errors="ignore")
+                      if "Service message" in candidate_page:
+                          print(f"andijon_namoz/{candidate_id} is a service message (e.g. pin notice) — trying previous id.")
+                          continue
+                      if re.search(r'BOMDOD', candidate_page, re.IGNORECASE):
+                          post = candidate_page
+                          found = True
+                          print(f"Found real content post at andijon_namoz/{candidate_id}")
+                          break
+                      else:
+                          print(f"andijon_namoz/{candidate_id} has no BOMDOD — trying previous id.")
+                  except Exception as e:
+                      print(f"Could not fetch andijon_namoz/{candidate_id}: {e}")
+              if not found:
+                  print("Could not locate the real content post nearby — falling back to feed preview (may be truncated).")
           else:
               print("No data-post id found on the matched block — using feed preview as-is.")
 
