@@ -40,6 +40,25 @@ jobs:
           # the LAST matching block in document order is the most recent post
           post = candidates[-1]
 
+          # The feed preview (t.me/s/...) truncates long messages with "…" —
+          # confirmed from a real run where Shom/Xufton were cut off. So instead
+          # of parsing the truncated preview, find this specific message's own
+          # permalink and fetch ITS dedicated page, which shows the full text.
+          post_id_match = re.search(r'data-post="(andijon_namoz/\d+)"', post)
+          if post_id_match:
+              try:
+                  req_single = urllib.request.Request(
+                      f"https://t.me/{post_id_match.group(1)}?embed=1",
+                      headers={"User-Agent": "Mozilla/5.0"}
+                  )
+                  with urllib.request.urlopen(req_single, timeout=20) as resp_single:
+                      post = resp_single.read().decode("utf-8", errors="ignore")
+                  print(f"Fetched full single-post page for {post_id_match.group(1)}")
+              except Exception as e:
+                  print(f"Could not fetch single-post page, falling back to feed preview: {e}")
+          else:
+              print("No data-post id found on the matched block — using feed preview as-is.")
+
           # Prefer the precise message-text element if we can isolate it (avoids
           # footer/timestamp/reply-quote noise); fall back to the whole block otherwise.
           text_match = re.search(r'class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', post, re.DOTALL)
