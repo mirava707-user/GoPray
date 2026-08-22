@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#070F10">
+<title>Layout Test 2</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100dvh;}
+  body{background:#070F10;color:#fff;font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;}
+
+  .content{flex:1;overflow-y:auto;background:#0F2426;margin:10px;border-radius:16px;padding:16px;font-size:1rem;}
+
+  /* NOTE: this tabbar has NO safe-area padding at all, on purpose */
+  .tabbar{flex:0 0 auto;display:flex;background:#0B1A1B;border-top:2px solid #D8B45A;}
+  .tab-btn{flex:1;background:none;border:none;padding:14px 0;color:#89ADAA;font-size:0.8rem;text-align:center;}
+  .tab-btn.active{color:#B9E86A;font-weight:700;}
+
+  .safe-area-readout{background:#2B1712;color:#F0B892;padding:12px;margin:10px;border-radius:12px;font-size:0.95rem;}
+</style>
+</head>
+<body>
+
+<div class="content">
+  <div class="safe-area-readout" id="readout">Measuring safe-area-inset-bottom...</div>
+  <p>This test page has <strong>NO safe-area padding</strong> on its tab bar at all (on purpose).</p>
+  <p>If the tab bar below sits flush with no gap this time, that proves the gap was being caused by safe-area padding, not the layout technique itself.</p>
+</div>
+
+<nav class="tabbar">
+  <button class="tab-btn active">Tab 1</button>
+  <button class="tab-btn">Tab 2</button>
+  <button class="tab-btn">Tab 3</button>
+</nav>
+
+<script>
+  // measure the actual safe-area-inset-bottom value this device reports
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;bottom:0;left:0;padding-bottom:env(safe-area-inset-bottom,0);visibility:hidden;';
+  document.body.appendChild(probe);
+  const px = getComputedStyle(probe).paddingBottom;
+  document.getElementById('readout').textContent = 'env(safe-area-inset-bottom) on this device = ' + px + '  |  window.innerHeight = ' + window.innerHeight + 'px  |  screen.height = ' + window.screen.height + 'px';
+</script>
+
+</body>
+</html>
